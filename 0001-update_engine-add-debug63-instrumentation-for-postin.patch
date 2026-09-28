@@ -1,0 +1,113 @@
+From 1e062172d6a5002658a4066c2d1b9e63ac5848ff Mon Sep 17 00:00:00 2001
+From: akifakif32 <mhmtkfdrn@gmail.com>
+Date: Sun, 27 Sep 2026 18:46:25 +0300
+Subject: [PATCH] update_engine: add debug63 instrumentation for postinstall
+ mount errors
+
+- postinstall_runner_action.cc: use distinct error codes 70/71/72 and
+  printf DEBUG63 markers at each MountPartition failure point
+- sideload_main.cc: print GetDebug63Info() alongside the error code
+---
+ aosp/sideload_main.cc                         |  3 +++
+ payload_consumer/postinstall_runner_action.cc | 16 +++++++++++++---
+ 2 files changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/aosp/sideload_main.cc b/aosp/sideload_main.cc
+index 68086ad5..3e8ec0aa 100644
+--- a/aosp/sideload_main.cc
++++ b/aosp/sideload_main.cc
+@@ -14,6 +14,7 @@
+ // limitations under the License.
+ //
+ 
++extern "C" const char* GetDebug63Info();
+ #include <xz.h>
+ 
+ #include <string>
+@@ -89,6 +90,8 @@ class SideloadDaemonState : public DaemonStateInterface,
+           "ui_print Error applying update: %d (%s)",
+           error_code,
+           utils::ErrorCodeToString(error_code).c_str()));
++      ReportStatus(android::base::StringPrintf(
++          "ui_print DEBUG63 info: %s", GetDebug63Info()));
+     }
+     error_code_ = error_code;
+     brillo::MessageLoop::current()->BreakLoop();
+diff --git a/payload_consumer/postinstall_runner_action.cc b/payload_consumer/postinstall_runner_action.cc
+index 0f059de9..c54171c9 100644
+--- a/payload_consumer/postinstall_runner_action.cc
++++ b/payload_consumer/postinstall_runner_action.cc
+@@ -125,7 +125,7 @@ void PostinstallRunnerAction::PerformAction() {
+       if (!dynamic_control->MapAllPartitions()) {
+         LOG(ERROR) << "Failed to map all partitions, this would cause "
+                       "FinishUpdate to fail. Abort early.";
+-        return CompletePostinstall(ErrorCode::kPostInstallMountError);
++        return CompletePostinstall(static_cast<ErrorCode>(70));
+       }
+     }
+   }
+@@ -165,6 +165,8 @@ void PostinstallRunnerAction::PerformAction() {
+   PerformPartitionPostinstall();
+ }
+ 
++#include <cstdio>
++
+ bool PostinstallRunnerAction::MountPartition(
+     const InstallPlan::Partition& partition) noexcept {
+   // Perform post-install for the current_partition_ partition. At this point we
+@@ -174,12 +176,16 @@ bool PostinstallRunnerAction::MountPartition(
+   if (!utils::FileExists(mountable_device.c_str())) {
+     LOG(ERROR) << "Mountable device " << mountable_device << " for partition "
+                << partition.name << " does not exist";
++    printf("ui_print DEBUG63: [1] mountable_device missing: %s (partition %s)\n", mountable_device.c_str(), partition.name.c_str());
++    fflush(stdout);
+     return false;
+   }
+ 
+   if (!utils::FileExists(fs_mount_dir_.c_str())) {
+     LOG(ERROR) << "Mount point " << fs_mount_dir_
+                << " does not exist, mount call will fail";
++    printf("ui_print DEBUG63: [2] fs_mount_dir missing: %s\n", fs_mount_dir_.c_str());
++    fflush(stdout);
+     return false;
+   }
+   // Double check that the fs_mount_dir is not busy with a previous mounted
+@@ -262,6 +268,8 @@ bool PostinstallRunnerAction::MountPartition(
+ 
+   // Mark the block device as read-only before mounting for post-install.
+   if (!utils::SetBlockDeviceReadOnly(mountable_device, true)) {
++    printf("ui_print DEBUG63: [3] SetBlockDeviceReadOnly failed: %s\n", mountable_device.c_str());
++    fflush(stdout);
+     return false;
+   }
+ #endif  // __ANDROID__
+@@ -272,6 +280,8 @@ bool PostinstallRunnerAction::MountPartition(
+           MS_RDONLY,
+           partition.filesystem_type,
+           hardware_->GetPartitionMountOptions(partition.name))) {
++    printf("ui_print DEBUG63: [4] MountFilesystem failed: %s fstype=%s\n", mountable_device.c_str(), partition.filesystem_type.c_str());
++    fflush(stdout);
+     return false;
+   }
+   return true;
+@@ -301,7 +311,7 @@ void PostinstallRunnerAction::PerformPartitionPostinstall() {
+     if (!partition.postinstall_path.empty()) {
+       const auto mountable_device = partition.readonly_target_path;
+       if (!MountPartition(partition)) {
+-        return CompletePostinstall(ErrorCode::kPostInstallMountError);
++        return CompletePostinstall(static_cast<ErrorCode>(71));
+       }
+       LogBuildInfoForPartition(fs_mount_dir_);
+       if (!utils::UnmountFilesystem(fs_mount_dir_)) {
+@@ -323,7 +333,7 @@ void PostinstallRunnerAction::PerformPartitionPostinstall() {
+   // cleanup.
+ 
+   if (!MountPartition(partition)) {
+-    CompletePostinstall(ErrorCode::kPostInstallMountError);
++    CompletePostinstall(static_cast<ErrorCode>(72));
+     return;
+   }
+   LogBuildInfoForPartition(fs_mount_dir_);
+-- 
+2.48.1
+

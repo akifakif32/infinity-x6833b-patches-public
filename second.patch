@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000002 Mon Sep 17 00:00:00 2001
+From: akifakif32 <mhmtkfdrn@gmail.com>
+Date: Mon, 1 Jan 2026 00:00:00 +0000
+Subject: [PATCH] fastbootd: Always return false for GetDeviceLockStatus
+
+---
+ fastboot/Android.bp         | 5 +++++
+ fastboot/device/utility.cpp | 4 ++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/fastboot/Android.bp b/fastboot/Android.bp
+index 263674330..708a36f5c 100644
+--- a/fastboot/Android.bp
++++ b/fastboot/Android.bp
+@@ -156,6 +156,11 @@ cc_binary {
+         default: [],
+     }),
+ 
++    cppflags: select(soong_config_variable("fastbootd", "bypass_lock_state"), {
++        true: ["-DFASTBOOT_BYPASS_LOCK_STATE"],
++        default: [],
++    }),
++
+     srcs: [
+         "device/commands.cpp",
+         "device/fastboot_device.cpp",
+diff --git a/fastboot/device/utility.cpp b/fastboot/device/utility.cpp
+index e12ee6479..5975698eb 100644
+--- a/fastboot/device/utility.cpp
++++ b/fastboot/device/utility.cpp
+@@ -195,7 +195,11 @@ std::vector<std::string> ListPartitions(FastbootDevice* device) {
+ }
+ 
+ bool GetDeviceLockStatus() {
++#ifdef FASTBOOT_BYPASS_LOCK_STATE
++    return false;
++#else
+     return android::base::GetProperty("ro.boot.verifiedbootstate", "") != "orange";
++#endif
+ }
+ 
+ bool UpdateAllPartitionMetadata(FastbootDevice* device, const std::string& super_name,
+-- 
+2.43.0

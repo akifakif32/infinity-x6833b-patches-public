@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000001 Mon Sep 17 00:00:00 2001
+From: akifakif32 <mhmtkfdrn@gmail.com>
+Date: Mon, 1 Jan 2026 00:00:00 +0000
+Subject: [PATCH] libfs_avb: Allow LKs patched with fenrir to boot on AVB
+
+---
+ libfs_avb/util.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libfs_avb/util.cpp b/libfs_avb/util.cpp
+index 79c7b949..f78e89cd 100644
+--- a/libfs_avb/util.cpp
++++ b/libfs_avb/util.cpp
+@@ -111,7 +111,7 @@ bool IsDeviceUnlocked() {
+     std::string verified_boot_state;
+ 
+     if (fs_mgr_get_boot_config("verifiedbootstate", &verified_boot_state)) {
+-        return verified_boot_state == "orange";
++        return (verified_boot_state == "orange" || verified_boot_state == "green");
+     }
+     return false;
+ }
+-- 
+2.43.0
